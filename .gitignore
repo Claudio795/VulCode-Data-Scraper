@@ -1,5 +1,7 @@
 __pycache__
 /csv
+/Logs
 CVE-Scraper_all.dat
 owasp_page.log
 filter_scraped_data.ipynb
+scrape_cve_new.ipynb

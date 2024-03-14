@@ -103,8 +103,8 @@ def record_cve_data(pageURL):
                             'html.parser')
     
     # get CWE IDs relative to current OWASP top 10 ranking
-    owasp_cwe = scrap_CWEs()
-    CWEs = chain.from_iterable(owasp_cwe.values())
+    #owasp_cwe = scrap_CWEs()
+    #CWEs = chain.from_iterable(owasp_cwe.values())
 
     pageTable = pageSoup.find('table', class_ = "searchresults sortable")
     for row, summarys in zip(pageTable.findAll('tr', class_ = "srrowns"), pageTable.findAll('td', class_ = "cvesummarylong")):
@@ -142,18 +142,18 @@ def record_cve_data(pageURL):
                     CWEID = "CWE-"+str(cell.find('a').next).strip("\r\n\t")
                 except:
                     CWEID = str(cell.next).strip("\r\n\t")
-                # take only the vulnerabilities relative to the owasp top 10
-                # if CWE is not valid, reset previous values and interrupt 
-                # the scan of the current row
-                if CWEID == '' or CWEID not in CWEs: 
-                    CVEPage = None
-                    CVEID = None
-                    CWEID = None
-                    break      
-                for owasp_vuln, cwe_list  in owasp_cwe.items():
-                    if CWEID in cwe_list:
-                        owasp_vulnerability = owasp_vuln
-                        break
+                # # take only the vulnerabilities relative to the owasp top 10
+                # # if CWE is not valid, reset previous values and interrupt 
+                # # the scan of the current row
+                # if CWEID == '' or CWEID not in CWEs: 
+                #     CVEPage = None
+                #     CVEID = None
+                #     CWEID = None
+                #     break      
+                # for owasp_vuln, cwe_list  in owasp_cwe.items():
+                #     if CWEID in cwe_list:
+                #         owasp_vulnerability = owasp_vuln
+                #         break
             if(index == 3):
                 knownExploits = str(cell.next).strip("\r\n\t")
             if(index == 4):
@@ -222,7 +222,7 @@ def record_cve_data(pageURL):
     #return list(result_dict.values())
     #return df_values
 
-"""def save_data(value_list):
+def save_data(value_list):
     columns = [
         'CVEID',
         'CVEPage',
@@ -244,16 +244,17 @@ def record_cve_data(pageURL):
         'codeLink'
     ]
     dataframe = pd.DataFrame(value_list, columns=columns)
-    dataframe.to_csv('./csv/cve_data.csv')"""
+    dataframe.to_csv('./csv/cve_data.csv')
 
 def scrape_cve_data():
     # grab the CVE Details page and throw it in beautifulSoup.
     pageURL = "https://www.cvedetails.com/browse-by-date.php"
+    print("Scrape starting up... root page: " + pageURL)
     log_message("Scrape starting up... root page: " + pageURL)
     catalogSoup=BeautifulSoup(urlopen(Request(pageURL,
                               headers={'User-Agent': 'Mozilla/5.0'})).read(),
                               'html.parser')
-
+    
     # Scrape the browse-by-date page to gather all of the different month's links
     catalogTable = catalogSoup.find('table', class_='stats')
     yearlyReports = []
@@ -294,9 +295,11 @@ def main(argv):
     print("\n==== CVE-Scraper ====")
     print("==== Main.py ====\n")
     print("PYTHON VERSION:\t\t" + sys.version)
+    print("CVE-Scraper Starting up...")
     log_message("CVE-Scraper Starting up...")
 
     scrape_cve_data()
+    print("Scrape complete")
     log_message("Scrape complete")
 
 if __name__ == '__main__':

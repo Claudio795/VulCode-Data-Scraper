@@ -7,11 +7,13 @@ import ssl
 import os
 import pandas as pd
 import csv
+import logging
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Global Variables
-
+logger = logging.getLogger(__name__)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',datefmt='%m/%d/%Y %H:%M:%S',level=logging.INFO)
 vulnCount = 0
 
 codeLinkCount = 0
@@ -227,7 +229,7 @@ def scrape_cve_data():
     catalogSoup=BeautifulSoup(urlopen(Request(pageURL,
                               headers={'User-Agent': 'Mozilla/5.0'})).read(),
                               'html.parser')
-
+    
     # Scrape the browse-by-date page to gather all of the different month's links
     catalogTable = catalogSoup.find('table', class_='stats')
     yearlyReports = []
