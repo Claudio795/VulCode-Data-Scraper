@@ -6,7 +6,7 @@ import os
 from tqdm import tqdm
 
 
-def scrape_CVEs():
+def scrape_CVEs() -> dict[str, list[str]]:
     pageURL = "https://www.cvedetails.com/browse-by-date.php"
     catalogSoup=BeautifulSoup(urlopen(Request(pageURL,
                                 headers={'User-Agent': 'Mozilla/5.0'})).read(),
@@ -15,6 +15,7 @@ def scrape_CVEs():
 
     yearlyReports = []
     years = []
+    year_pageURLs = {}
     for year in Yearslist:
         yearName = year.find('a').text.strip()
         #print(f'Found year {yearName}')
@@ -32,8 +33,12 @@ def scrape_CVEs():
         pageIndex = yearTableSoup.find('div', {'id':'pagingb'}, class_='paging')
         pageURLs = ["https://www.cvedetails.com"+page['href'] for page in pageIndex.findAll('a', href=True)]
         print(f"Found {len(pageURLs)} pages for {years[i]}")
-        #get_cve_details(pageURLs)
-    return pageURLs
+        year_pageURLs[years[i]] = pageURLs
+    #    #get_cve_details(pageURLs)
+    #key, _ = year_pageURLs.popitem()
+    #print(f'removed {key} pair')
+    #print(year_pageURLs['2024'][0])
+    return year_pageURLs
         
 
 def check_git_link(URLs: list) -> list | None:
@@ -45,12 +50,12 @@ def check_git_link(URLs: list) -> list | None:
             #print("codeLinkCount:" + str(codeLinkCount))
             gitUrls.append(url)
     if gitUrls == []:
-        # if there are not git links, return None
-        gitUrls.append('None')
+        # if there are not git links, return 'None'
+        gitUrls = 'None'
     return gitUrls
 
 
-def get_cve_details(pageURLs: list[str]):
+def get_cve_details(year_pageURLs: dict[str, list[str]]):
     """
     Given a list of URLs to pages with CVEs (specifically, very list report the URLs of the pages with the CVEs by year),
     this function scrapes the CVEs in the pages and saves the details in a csv file.
@@ -58,102 +63,99 @@ def get_cve_details(pageURLs: list[str]):
     Args:
         - pageURLs (list[str]): List of URLs to pages with CVEs
     """
-    keys = [
-            "CVE_ID",
-            "CVE_URL",
-            "Summary",
-            "EPSS_scores",
-            "Published_dates",
-            "Updated_dates",
-            "CVSS_score",
-            "CVSS_severity",
-            "CVSS_vector",
-            "exploitability_score",
-            "impact_score",
-            "score_source",
-            "CWE_ID",
-            "Reference_links"
+    # cve details to scrape, None if not present
+    keys = ["CVE_ID", "CVE_URL", "Summary", "Published_dates", "Updated_dates", "EPSS_scores", "CVSS_score", 
+            "CVSS_severity", "CVSS_vector", "Attack Vector", "Attack Complexity", "Privileges Required", "User Interaction", 
+            "Scope", "Confidentiality", "Integrity", "Availability", "exploitability_score", "impact_score", "score_source", 
+            "CWE_ID", "Reference_links",
             ]
+    values = ['None']*len(keys)
+    #cve_dict = dict(zip(keys, values))
     total_cve = 0
-    bar = tqdm(pageURLs, total=len(pageURLs))
-    for pageURL in bar:
-        numCVEs = 0 
-        #print(f"Scraping {pageURL}...")
-        pageSoup = BeautifulSoup(urlopen(Request(pageURL,
-                            headers={'User-Agent': 'Mozilla/5.0'})).read(),
-                            'html.parser')
-        pageTable = pageSoup.find('div', id = "searchresults")
+    # year
+    for year, pageURLs in year_pageURLs.items():
+        year_cve = 0
+        print(f"Scraping CVEs for {year}...")
+        bar = tqdm(pageURLs, total=len(pageURLs))
+        # page
+        for pageURL in bar:
+            numCVEs = 0 
+            #print(f"Scraping {pageURL}...")
+            pageSoup = BeautifulSoup(urlopen(Request(pageURL,
+                                headers={'User-Agent': 'Mozilla/5.0'})).read(),
+                                'html.parser')
+            pageTable = pageSoup.find('div', id = "searchresults")
+            cveURLs = ["https://www.cvedetails.com" + cveID.find('a')['href'] for cveID in pageTable.findAll('h3', class_="col-md-4 text-nowrap")] # len 25
 
-        # take the first details from the page
-        summaries = [summary.text for summary in pageTable.findAll('div', class_='cvesummarylong')] # len 25
-        cveIDs = [cveID.text for cveID in pageTable.findAll('h3', class_="col-md-4 text-nowrap")] # len 25
-        cveURLs = ["https://www.cvedetails.com" + cveID.find('a')['href'] for cveID in pageTable.findAll('h3', class_="col-md-4 text-nowrap")] # len 25
+            # iterate all the cve in the page
+            for cveURL in cveURLs:
+                cve_dict = dict(zip(keys, values))
+                cveSoup = BeautifulSoup(urlopen(Request(cveURL,
+                                headers={'User-Agent': 'Mozilla/5.0'})).read(),
+                                'html.parser')
+                # CVE ID
+                cve_dict['CVE_ID'] = cveSoup.find('title').text.split(' :')[0]
+                # CVE URL
+                cve_dict['CVE_URL'] = cveURL
+                # Summary
+                cve_dict['Summary'] = cveSoup.find('div', class_="cvedetailssummary-text").text
+                # Published date
+                cve_dict['Published_dates'] = cveSoup.findAll('div', class_="d-inline-block py-1")[0].text.split(' ')[1].strip()
+                # Updated data
+                cve_dict['Updated_dates'] = cveSoup.findAll('div', class_="d-inline-block py-1")[1].text.split(' ')[1].strip()
+                # EPSS score
+                try:
+                    cve_dict['EPSS_scores'] =cveSoup.find('div', class_="bg-white border-top py-2 px-3").find('span').text.strip()
+                except AttributeError:
+                    cve_dict['EPSS_scores'] = 'None'
+                # Reference links
+                reflinks_soup = cveSoup.find('ul', class_="list-group rounded-0")
+                if reflinks_soup is not None:
+                    reflinks = [ref['href'] for ref in cveSoup.find('ul', class_="list-group rounded-0").findAll('a', href=True)]
+                    # if not to github commit, it will be ['None']
+                    cve_dict['Reference_links'] = check_git_link(reflinks)
+                # CWE 
+                try:
+                    cve_dict['CWE_ID'] = cveSoup.find('ul', class_="list-group border-0 rounded-0").find('a').text.split(' ')[0].strip()
+                except AttributeError:
+                    cve_dict['CWE_ID'] = 'None'
 
-        EPSS_scores = []
-        Published_dates = []
-        Updated_dates = []
+                # CVSS details
+                CVSS_Scores_Soup = cveSoup.find('tbody')
+                if CVSS_Scores_Soup is not None:
+                    # CVSS scores - first half
+                    CVSS_Scores_Soup = CVSS_Scores_Soup.findAll('td')
+                    cve_dict['CVSS_score'] = CVSS_Scores_Soup[0].text.strip()
+                    cve_dict['CVSS_severity'] = CVSS_Scores_Soup[1].text.strip()
+                    cve_dict['CVSS_vector'] = CVSS_Scores_Soup[2].text.strip()
+                    cve_dict['exploitability_score'] = CVSS_Scores_Soup[3].text.strip()
+                    cve_dict['impact_score'] = CVSS_Scores_Soup[4].text.strip()
+                    cve_dict['score_source'] = CVSS_Scores_Soup[5].text.strip()
+                    # CVSS scores - second half
+                    CVSS_vector = cveSoup.find("div", class_="d-flex flex-row justify-content-evenly text-secondary d-grid gap-3")
+                    CVSS_vector = CVSS_vector.findAll('div')
+                    for item in CVSS_vector:
+                        if item.text.split(': ')[0] in keys:
+                            cve_dict[item.text.split(': ')[0]] = item.text.split(': ')[1]
 
-        for item in pageTable.findAll('div', class_="col-md-3"):
-            for row in item.findAll('div', class_="row mb-1"):
-                col = row.findAll('div', class_="col-6")
-                if col[0].text == "EPSS Score":
-                    EPSS_scores.append(col[1].text)         # len 25
-                elif col[0].text == "Published":
-                    Published_dates.append(col[1].text)     # len 25
-                elif col[0].text == "Updated":
-                    Updated_dates.append(col[1].text)       # len 25
-
-        # take the next data from the CVE pages
-        for i, cveURL in enumerate(cveURLs):
-            cveSoup = BeautifulSoup(urlopen(Request(cveURL,
-                             headers={'User-Agent': 'Mozilla/5.0'})).read(),
-                             'html.parser')
-            # Reference links: if not to github commit, it will be ['None']
-            reflinks = [ref['href'] for ref in cveSoup.find('ul', class_="list-group rounded-0").findAll('a', href=True)]
-            reflinks = check_git_link(reflinks)
-            
-            # Add the details previously gatered to the list
-            values = [cveIDs[i], cveURL, summaries[i], EPSS_scores[i], Published_dates[i], Updated_dates[i]]
-            # take new details from the cve page
-            CVSS_Scores_Soup = cveSoup.find('tbody').findAll('td')[:-1]
-            CVE_details_list = [td.text.strip() for td in CVSS_Scores_Soup]
-            # cwe then
-            cwe = cveSoup.find('ul', class_="list-group border-0 rounded-0").find('a').text.split(' ')[0].strip()
-            # add cwe and reference links to list
-            #print('cwe: ', cwe)
-            CVE_details_list.append(cwe)
-            CVE_details_list.extend(reflinks)
-            #print("tdList: ", CVE_details_list)
-            #print("ref links: ", reflinks)
-            # finally, add the new details to the list
-            values.extend(CVE_details_list)
-            # build dict
-            #print("keys: ", keys)
-            #print("values: ", values)
-            #
-            cveDetails = dict(zip(keys, values))
-            #print(cveDetails)
-            CVSS_vector = cveSoup.find("div", class_="d-flex flex-row justify-content-evenly text-secondary d-grid gap-3").findAll('div')
-            CVSS_vector = {CVSS_vector[i].text.split(': ')[0]: CVSS_vector[i].text.split(': ')[1] for i in range(0, len(CVSS_vector))}
-
-            cveDetails.update(CVSS_vector)
-            numCVEs += len(cveDetails)
-            total_cve += len(cveDetails)
-            # Save as csv file
-            values = list(cveDetails.values())
-            #print(list(cveDetails.keys()))
-            if os.path.exists('./csv/cve_data_new.csv'):
-                with open('./csv/cve_data_new.csv', 'a') as csv_file:
-                    writer = csv.writer(csv_file)
-                    writer.writerow(values)
-            else: 
-                columns = list(cveDetails.keys())
-                with open('./csv/cve_data_new.csv', 'x') as csv_file:
-                    writer = csv.writer(csv_file)
-                    writer.writerow(columns)
-                    writer.writerow(values)
-            num_page = pageURL.split('page=')[1].split('&')[0]
-            bar.set_description(f"Scraped {total_cve}, page {num_page}")
+                # save vulnerability data
+                numCVEs += 1
+                year_cve += 1
+                total_cve += 1
+                # Save as csv file
+                dict_values = list(cve_dict.values())
+                if os.path.exists('./csv/cve_data_new.csv'):
+                    with open('./csv/cve_data_new.csv', 'a') as csv_file:
+                        writer = csv.writer(csv_file)
+                        writer.writerow(dict_values)
+                else: 
+                    columns = list(cve_dict.keys())
+                    with open('./csv/cve_data_new.csv', 'x') as csv_file:
+                        writer = csv.writer(csv_file)
+                        writer.writerow(columns)
+                        writer.writerow(dict_values)
+                num_page = pageURL.split('page=')[1].split('&')[0]
+                bar.set_description(f"Scraped {year_cve}, page {num_page}, total {total_cve}")
 
     print(f"Done! Scraped {total_cve} CVEs in total")
 
